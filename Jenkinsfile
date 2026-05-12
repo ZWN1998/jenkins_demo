@@ -12,39 +12,31 @@ pipeline {
             steps {
                 sh '''
                     echo "===== 检查 Java 环境 ====="
-                    if command -v java &>/dev/null; then
+                    if type java >/dev/null 2>&1; then
                         echo "Java 已安装: $(java -version 2>&1 | head -1)"
                     else
                         echo "Java 未安装，正在安装 JDK 8..."
-                        apt-get update -qq
-                        apt-get install -y -qq openjdk-8-jdk
-                        echo "Java 安装完成: $(java -version 2>&1 | head -1)"
+                        apt-get update -qq && apt-get install -y -qq openjdk-8-jdk
                     fi
 
                     echo "===== 检查 Maven 环境 ====="
-                    if command -v mvn &>/dev/null; then
-                        echo "Maven 已安装: $(mvn -version | head -1)"
+                    if type mvn >/dev/null 2>&1; then
+                        echo "Maven 已安装: $(mvn -version 2>&1 | head -1)"
                     else
-                        echo "Maven 未安装，正在安装 Maven..."
-                        apt-get install -y -qq maven
-                        echo "Maven 安装完成: $(mvn -version | head -1)"
+                        echo "Maven 未安装，正在安装..."
+                        apt-get update -qq && apt-get install -y -qq maven
+                        echo "Maven 安装完成: $(mvn -version 2>&1 | head -1)"
                     fi
 
-                    echo "===== 检查 Git 环境 ====="
-                    if command -v git &>/dev/null; then
-                        echo "Git 已安装: $(git --version)"
-                    else
-                        echo "Git 未安装，正在安装..."
-                        apt-get install -y -qq git
-                        echo "Git 安装完成: $(git --version)"
-                    fi
+                    echo "===== 当前环境 ====="
+                    java -version 2>&1
+                    mvn -version 2>&1
                 '''
             }
         }
 
         stage('Checkout') {
             steps {
-                echo '从 GitHub 拉取代码...'
                 git branch: 'main',
                     url: 'https://github.com/ZWN1998/jenkins_demo.git'
             }
