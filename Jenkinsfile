@@ -63,8 +63,16 @@ pipeline {
                     ps aux | grep ${APP_NAME} | grep -v grep | awk '{print \$2}' | xargs -r kill || true
                     sleep 2
                     cp target/*.jar ${DEPLOY_DIR}/${APP_NAME}.jar
+
+                    # 写启动脚本并用 setsid 完全脱离 Jenkins 进程组
+                    cat > ${DEPLOY_DIR}/start.sh << SCRIPT
+                    #!/bin/bash
                     cd ${DEPLOY_DIR}
-                    nohup java -jar ${APP_NAME}.jar --server.port=${APP_PORT} > ${APP_NAME}.log 2>&1 &
+                    java -jar ${APP_NAME}.jar --server.port=${APP_PORT} > ${APP_NAME}.log 2>&1
+                    SCRIPT
+                    chmod +x ${DEPLOY_DIR}/start.sh
+                    setsid ${DEPLOY_DIR}/start.sh </dev/null >/dev/null 2>&1 &
+
                     sleep 5
                     ps aux | grep ${APP_NAME} | grep -v grep || echo "进程未运行，请检查日志"
                 """
