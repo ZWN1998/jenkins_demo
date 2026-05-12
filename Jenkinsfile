@@ -59,9 +59,9 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sh 'mkdir -p /deploy && cp target/*.jar /deploy/jenkins-demo.jar'
+                sh 'mkdir -p /var/jenkins_home/deploy && cp target/*.jar /var/jenkins_home/deploy/jenkins-demo.jar'
                 sh 'pkill -f jenkins-demo.jar || true'
-                sh 'cd /deploy && nohup java -jar jenkins-demo.jar --server.port=8787 > jenkins-demo.log 2>&1 &'
+                sh 'cd /var/jenkins_home/deploy && nohup java -jar jenkins-demo.jar --server.port=8787 > jenkins-demo.log 2>&1 &'
             }
         }
     }
