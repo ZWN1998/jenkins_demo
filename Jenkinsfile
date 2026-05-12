@@ -59,20 +59,9 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sh """
-                    ps aux | grep ${APP_NAME} | grep -v grep | awk '{print \$2}' | xargs -r kill || true
-                    cp target/*.jar ${DEPLOY_DIR}/${APP_NAME}.jar
-
-                    # 写启动脚本到部署目录
-                    cat > ${DEPLOY_DIR}/start.sh << SCRIPT
-#!/bin/bash
-cd ${DEPLOY_DIR}
-java -jar ${APP_NAME}.jar --server.port=${APP_PORT} > ${APP_NAME}.log 2>&1
-SCRIPT
-                    chmod +x ${DEPLOY_DIR}/start.sh
-                """
-                // 用独立 shell 执行启动脚本，与 Jenkins 流水线进程完全隔离
-                sh "nohup /bin/bash ${DEPLOY_DIR}/start.sh &"
+                sh 'cp target/*.jar /deploy/jenkins-demo.jar'
+                sh 'pkill -f jenkins-demo.jar || true'
+                sh 'cd /deploy && nohup java -jar jenkins-demo.jar --server.port=8787 > jenkins-demo.log 2>&1 &'
             }
         }
     }
