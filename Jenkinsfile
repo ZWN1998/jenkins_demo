@@ -2,36 +2,28 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME    = 'jenkins-demo'
-        APP_PORT    = '8787'
-        DEPLOY_DIR  = '/deploy'
+        APP_NAME      = 'jenkins-demo'
+        APP_PORT      = '8787'
+        DEPLOY_DIR    = '/deploy'
+        MAVEN_VERSION = '3.8.8'
+        MAVEN_HOME    = '/var/jenkins_home/tools/apache-maven-3.8.8'
     }
 
     stages {
-        stage('Check Environment') {
+        stage('Setup Maven') {
             steps {
-                sh '''
-                    echo "===== 检查 Java 环境 ====="
-                    if type java >/dev/null 2>&1; then
-                        echo "Java 已安装: $(java -version 2>&1 | head -1)"
+                sh """
+                    if [ -d "${MAVEN_HOME}" ]; then
+                        echo "Maven 已安装"
                     else
-                        echo "Java 未安装，正在安装 JDK 8..."
-                        apt-get update -qq && apt-get install -y -qq openjdk-8-jdk
+                        echo "Maven 未安装，开始下载..."
+                        mkdir -p /var/jenkins_home/tools
+                        curl -fsSL https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz -o /var/jenkins_home/tools/maven.tar.gz
+                        tar xzf /var/jenkins_home/tools/maven.tar.gz -C /var/jenkins_home/tools
+                        echo "Maven 下载完成"
                     fi
-
-                    echo "===== 检查 Maven 环境 ====="
-                    if type mvn >/dev/null 2>&1; then
-                        echo "Maven 已安装: $(mvn -version 2>&1 | head -1)"
-                    else
-                        echo "Maven 未安装，正在安装..."
-                        apt-get update -qq && apt-get install -y -qq maven
-                        echo "Maven 安装完成: $(mvn -version 2>&1 | head -1)"
-                    fi
-
-                    echo "===== 当前环境 ====="
-                    java -version 2>&1
-                    mvn -version 2>&1
-                '''
+                    ${MAVEN_HOME}/bin/mvn -version
+                """
             }
         }
 
@@ -44,13 +36,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn clean compile'
+                sh "${MAVEN_HOME}/bin/mvn clean compile"
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                sh "${MAVEN_HOME}/bin/mvn test"
             }
             post {
                 always {
@@ -61,7 +53,7 @@ pipeline {
 
         stage('Package') {
             steps {
-                sh 'mvn package -DskipTests'
+                sh "${MAVEN_HOME}/bin/mvn package -DskipTests"
             }
         }
 
