@@ -2,47 +2,61 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME      = 'jenkins-demo'
-        APP_PORT      = '8787'
-        DEPLOY_DIR    = '/deploy'
-        MAVEN_VERSION = '3.8.8'
-        MAVEN_HOME    = '/var/jenkins_home/tools/apache-maven-3.8.8'
+        APP_NAME   = 'jenkins-demo'
+        APP_PORT   = '8787'
+        DEPLOY_DIR = '/opt/deploy/jenkins-demo'
     }
 
     stages {
-        stage('Setup Maven') {
+        stage('Check Environment') {
             steps {
-                sh """
-                    if [ -d "${MAVEN_HOME}" ]; then
-                        echo "Maven 已安装"
+                sh '''
+                    echo "===== 检查 Java ====="
+                    if type java >/dev/null 2>&1; then
+                        echo "Java 已安装: $(java -version 2>&1 | head -1)"
                     else
-                        echo "Maven 未安装，开始下载..."
-                        mkdir -p /var/jenkins_home/tools
-                        curl -fsSL https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz -o /var/jenkins_home/tools/maven.tar.gz
-                        tar xzf /var/jenkins_home/tools/maven.tar.gz -C /var/jenkins_home/tools
-                        echo "Maven 下载完成"
+                        echo "Java 未安装，正在安装..."
+                        apt-get update -qq && apt-get install -y -qq openjdk-17-jdk || \
+                        yum install -y java-17-openjdk-devel
+                        echo "Java 安装完成: $(java -version 2>&1 | head -1)"
                     fi
-                    ${MAVEN_HOME}/bin/mvn -version
-                """
+
+                    echo "===== 检查 Maven ====="
+                    if type mvn >/dev/null 2>&1; then
+                        echo "Maven 已安装: $(mvn -version 2>&1 | head -1)"
+                    else
+                        echo "Maven 未安装，正在安装..."
+                        apt-get install -y -qq maven || yum install -y maven
+                        echo "Maven 安装完成: $(mvn -version 2>&1 | head -1)"
+                    fi
+
+                    echo "===== 检查 Git ====="
+                    if type git >/dev/null 2>&1; then
+                        echo "Git 已安装: $(git --version)"
+                    else
+                        echo "Git 未安装，正在安装..."
+                        apt-get install -y -qq git || yum install -y git
+                    fi
+                '''
             }
         }
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
+                git branch: 'linux-host',
                     url: 'https://github.com/ZWN1998/jenkins_demo.git'
             }
         }
 
         stage('Build') {
             steps {
-                sh "${MAVEN_HOME}/bin/mvn clean compile"
+                sh 'mvn clean compile'
             }
         }
 
         stage('Test') {
             steps {
-                sh "${MAVEN_HOME}/bin/mvn test"
+                sh 'mvn test'
             }
             post {
                 always {
@@ -53,15 +67,31 @@ pipeline {
 
         stage('Package') {
             steps {
-                sh "${MAVEN_HOME}/bin/mvn package -DskipTests"
+                sh 'mvn package -DskipTests'
             }
         }
 
         stage('Deploy') {
             steps {
-                sh 'mkdir -p /var/jenkins_home/deploy && cp target/*.jar /var/jenkins_home/deploy/jenkins-demo.jar'
-                sh 'pkill -f jenkins-demo.jar || true'
-                sh 'cd /var/jenkins_home/deploy && nohup java -jar jenkins-demo.jar --server.port=8787 > jenkins-demo.log 2>&1 &'
+                sh """
+                    # 创建部署目录
+                    mkdir -p ${DEPLOY_DIR}
+
+                    # 停掉旧进程
+                    ps aux | grep ${APP_NAME} | grep -v grep | awk '{print \$2}' | xargs -r kill || true
+                    sleep 2
+
+                    # 拷贝 jar
+                    cp target/*.jar ${DEPLOY_DIR}/${APP_NAME}.jar
+
+                    # 后台启动
+                    cd ${DEPLOY_DIR}
+                    nohup java -jar ${APP_NAME}.jar --server.port=${APP_PORT} > ${APP_NAME}.log 2>&1 &
+                    sleep 3
+
+                    # 检查是否启动成功
+                    ps aux | grep ${APP_NAME} | grep -v grep && echo "启动成功" || echo "启动失败，请查看日志: ${DEPLOY_DIR}/${APP_NAME}.log"
+                """
             }
         }
     }
