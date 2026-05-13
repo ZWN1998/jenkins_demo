@@ -16,8 +16,8 @@ pipeline {
                         echo "Java 已安装: $(java -version 2>&1 | head -1)"
                     else
                         echo "Java 未安装，正在安装..."
-                        apt-get update -qq && apt-get install -y -qq openjdk-17-jdk || \
-                        yum install -y java-17-openjdk-devel
+                        sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || \
+                        sudo yum install -y java-17-openjdk-devel
                         echo "Java 安装完成: $(java -version 2>&1 | head -1)"
                     fi
 
@@ -26,7 +26,7 @@ pipeline {
                         echo "Maven 已安装: $(mvn -version 2>&1 | head -1)"
                     else
                         echo "Maven 未安装，正在安装..."
-                        apt-get install -y -qq maven || yum install -y maven
+                        sudo apt-get install -y -qq maven || sudo yum install -y maven
                         echo "Maven 安装完成: $(mvn -version 2>&1 | head -1)"
                     fi
 
@@ -35,7 +35,7 @@ pipeline {
                         echo "Git 已安装: $(git --version)"
                     else
                         echo "Git 未安装，正在安装..."
-                        apt-get install -y -qq git || yum install -y git
+                        sudo apt-get install -y -qq git || sudo yum install -y git
                     fi
                 '''
             }
