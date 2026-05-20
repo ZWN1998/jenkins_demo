@@ -18,31 +18,23 @@ pipeline {
             steps {
                 sh '''
                     echo "===== Jenkins 节点环境检查 ====="
-                    echo "Java:"
-                    if type java >/dev/null 2>&1; then
-                        java -version 2>&1
-                    else
-                        echo "Java 未安装，正在安装..."
-                        sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || sudo yum install -y java-17-openjdk-devel
-                        java -version 2>&1
-                    fi
 
-                    echo "Maven:"
-                    if type mvn >/dev/null 2>&1; then
-                        mvn -version 2>&1 | head -1
-                    else
-                        echo "Maven 未安装，正在安装..."
-                        sudo apt-get install -y -qq maven || sudo yum install -y maven
-                        mvn -version 2>&1 | head -1
-                    fi
+                    echo "Java:"
+                    java -version 2>&1 || echo "Java 未安装"
 
                     echo "Git:"
-                    if type git >/dev/null 2>&1; then
-                        git --version
+                    git --version 2>&1 || echo "Git 未安装"
+
+                    echo "Maven:"
+                    if mvn -version >/dev/null 2>&1; then
+                        mvn -version 2>&1 | head -1
                     else
-                        echo "Git 未安装，正在安装..."
-                        sudo apt-get install -y -qq git || sudo yum install -y git
-                        git --version
+                        echo "Maven 未安装，通过 curl 下载..."
+                        mkdir -p /var/jenkins_home/tools
+                        curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.8.8/binaries/apache-maven-3.8.8-bin.tar.gz -o /var/jenkins_home/tools/maven.tar.gz
+                        tar xzf /var/jenkins_home/tools/maven.tar.gz -C /var/jenkins_home/tools
+                        echo "Maven 下载完成"
+                        /var/jenkins_home/tools/apache-maven-3.8.8/bin/mvn -version 2>&1 | head -1
                     fi
                     echo "===== 环境检查完成 ====="
                 '''
@@ -58,7 +50,7 @@ pipeline {
 
         stage('Build & Package') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh '/var/jenkins_home/tools/apache-maven-3.8.8/bin/mvn clean package -DskipTests'
             }
         }
 
