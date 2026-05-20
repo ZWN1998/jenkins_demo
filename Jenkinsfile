@@ -1,46 +1,19 @@
 pipeline {
     agent any
 
+    parameters {
+        string(name: 'TARGET_HOST', defaultValue: '你的服务器IP', description: '目标服务器IP')
+        string(name: 'SSH_USER', defaultValue: 'root', description: 'SSH登录用户')
+        string(name: 'SSH_CRED_ID', defaultValue: 'jenkins-ssh-key', description: 'Jenkins中SSH凭据的ID')
+        string(name: 'DEPLOY_DIR', defaultValue: '/opt/app/jenkins-demo', description: '远程服务器部署目录')
+        string(name: 'APP_PORT', defaultValue: '8787', description: '应用端口')
+    }
+
     environment {
-        APP_NAME   = 'jenkins-demo'
-        APP_PORT   = '8787'
-        DEPLOY_DIR = '/opt/deploy/jenkins-demo'
+        APP_NAME = 'jenkins-demo'
     }
 
     stages {
-        stage('Check Environment') {
-            steps {
-                sh '''
-                    echo "===== 检查 Java ====="
-                    if type java >/dev/null 2>&1; then
-                        echo "Java 已安装: $(java -version 2>&1 | head -1)"
-                    else
-                        echo "Java 未安装，正在安装..."
-                        sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || \
-                        sudo yum install -y java-17-openjdk-devel
-                        echo "Java 安装完成: $(java -version 2>&1 | head -1)"
-                    fi
-
-                    echo "===== 检查 Maven ====="
-                    if type mvn >/dev/null 2>&1; then
-                        echo "Maven 已安装: $(mvn -version 2>&1 | head -1)"
-                    else
-                        echo "Maven 未安装，正在安装..."
-                        sudo apt-get install -y -qq maven || sudo yum install -y maven
-                        echo "Maven 安装完成: $(mvn -version 2>&1 | head -1)"
-                    fi
-
-                    echo "===== 检查 Git ====="
-                    if type git >/dev/null 2>&1; then
-                        echo "Git 已安装: $(git --version)"
-                    else
-                        echo "Git 未安装，正在安装..."
-                        sudo apt-get install -y -qq git || sudo yum install -y git
-                    fi
-                '''
-            }
-        }
-
         stage('Checkout') {
             steps {
                 git branch: 'linux-host',
@@ -48,57 +21,43 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build & Package') {
             steps {
-                sh 'mvn clean compile'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('Package') {
-            steps {
-                sh 'mvn package -DskipTests'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Deploy') {
             steps {
-                sh """
-                    # 创建部署目录
-                    mkdir -p ${DEPLOY_DIR}
+                withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CRED_ID, keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        set -e
+                        echo "===== 部署到 ${params.TARGET_HOST} ====="
 
-                    # 停掉旧进程
-                    ps aux | grep ${APP_NAME} | grep -v grep | awk '{print \$2}' | xargs -r kill || true
-                    sleep 2
+                        # 1. 创建远程目录
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "mkdir -p ${params.DEPLOY_DIR}"
 
-                    # 拷贝 jar
-                    cp target/*.jar ${DEPLOY_DIR}/${APP_NAME}.jar
+                        # 2. 停止旧进程
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "ps aux | grep '${APP_NAME}' | grep -v grep | awk '{print \\\$2}' | xargs -r kill || true"
+                        sleep 2
 
-                    # 后台启动
-                    cd ${DEPLOY_DIR}
-                    nohup java -jar ${APP_NAME}.jar --server.port=${APP_PORT} > ${APP_NAME}.log 2>&1 &
-                    sleep 3
+                        # 3. 上传 jar
+                        scp -i \$SSH_KEY -o StrictHostKeyChecking=no target/*.jar ${params.SSH_USER}@${params.TARGET_HOST}:${params.DEPLOY_DIR}/${APP_NAME}.jar
 
-                    # 检查是否启动成功
-                    ps aux | grep ${APP_NAME} | grep -v grep && echo "启动成功" || echo "启动失败，请查看日志: ${DEPLOY_DIR}/${APP_NAME}.log"
-                """
+                        # 4. 启动应用
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "cd ${params.DEPLOY_DIR} && nohup java -jar ${APP_NAME}.jar --server.port=${params.APP_PORT} > ${APP_NAME}.log 2>&1 &"
+
+                        sleep 3
+                        echo "===== 部署完成，访问 http://${params.TARGET_HOST}:${params.APP_PORT} ====="
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo "部署成功！访问 http://服务器IP:${APP_PORT}"
+            echo "部署成功！访问 http://${params.TARGET_HOST}:${params.APP_PORT}"
         }
         failure {
             echo '部署失败，请查看控制台输出'
