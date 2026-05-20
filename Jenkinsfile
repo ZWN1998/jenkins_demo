@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'TARGET_HOST', defaultValue: '你的服务器IP', description: '目标服务器IP')
+        string(name: 'TARGET_HOST', defaultValue: '118.25.133.170', description: '目标服务器IP')
         string(name: 'SSH_USER', defaultValue: 'root', description: 'SSH登录用户')
-        string(name: 'SSH_CRED_ID', defaultValue: 'jenkins-ssh-key', description: 'Jenkins中SSH凭据的ID')
+        string(name: 'SSH_CRED_ID', defaultValue: 'server-118.25.133.170-root', description: 'Jenkins中SSH凭据的ID')
         string(name: 'DEPLOY_DIR', defaultValue: '/opt/app/jenkins-demo', description: '远程服务器部署目录')
         string(name: 'APP_PORT', defaultValue: '8787', description: '应用端口')
     }
