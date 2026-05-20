@@ -14,6 +14,41 @@ pipeline {
     }
 
     stages {
+        stage('Check Local Environment') {
+            steps {
+                sh '''
+                    echo "===== Jenkins 节点环境检查 ====="
+                    echo "Java:"
+                    if type java >/dev/null 2>&1; then
+                        java -version 2>&1
+                    else
+                        echo "Java 未安装，正在安装..."
+                        sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || sudo yum install -y java-17-openjdk-devel
+                        java -version 2>&1
+                    fi
+
+                    echo "Maven:"
+                    if type mvn >/dev/null 2>&1; then
+                        mvn -version 2>&1 | head -1
+                    else
+                        echo "Maven 未安装，正在安装..."
+                        sudo apt-get install -y -qq maven || sudo yum install -y maven
+                        mvn -version 2>&1 | head -1
+                    fi
+
+                    echo "Git:"
+                    if type git >/dev/null 2>&1; then
+                        git --version
+                    else
+                        echo "Git 未安装，正在安装..."
+                        sudo apt-get install -y -qq git || sudo yum install -y git
+                        git --version
+                    fi
+                    echo "===== 环境检查完成 ====="
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 git branch: 'linux-host',
@@ -24,6 +59,30 @@ pipeline {
         stage('Build & Package') {
             steps {
                 sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Check Remote Environment') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CRED_ID, keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        echo "===== 远程服务器环境检查 ====="
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} '
+                            echo "主机名: \$(hostname)"
+                            echo "Java:"
+                            if type java >/dev/null 2>&1; then
+                                java -version 2>&1
+                            else
+                                echo "Java 未安装，正在安装..."
+                                apt-get update -qq && apt-get install -y -qq openjdk-17-jdk || yum install -y java-17-openjdk-devel
+                                java -version 2>&1
+                            fi
+                            echo "磁盘空间:"
+                            df -h / | tail -1
+                        '
+                        echo "===== 远程环境检查完成 ====="
+                    """
+                }
             }
         }
 
