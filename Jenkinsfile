@@ -45,7 +45,12 @@ pipeline {
             steps {
                 sh '''
                     rm -rf repo && mkdir repo && cd repo
-                    curl -fsSL https://github.com/ZWN1998/jenkins_demo/archive/refs/heads/linux-host.tar.gz -o code.tar.gz
+                    for i in 1 2 3; do
+                        echo "尝试第 ${i} 次下载..."
+                        curl -k -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 120 \
+                          https://github.com/ZWN1998/jenkins_demo/archive/refs/heads/linux-host.tar.gz -o code.tar.gz && break
+                        sleep 5
+                    done
                     tar xzf code.tar.gz --strip-components=1
                     rm -f code.tar.gz
                     echo "代码拉取完成: $(ls -la | wc -l) 个文件"
