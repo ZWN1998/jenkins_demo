@@ -92,14 +92,13 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CRED_ID, keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        set -e
                         echo "===== 部署到 ${params.TARGET_HOST} ====="
 
                         # 1. 创建远程目录
                         ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} mkdir -p ${params.DEPLOY_DIR}
 
                         # 2. 停止旧进程
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "pkill -f ${APP_NAME}.jar || true"
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "pkill -f ${APP_NAME}.jar" || true
                         sleep 2
 
                         # 3. 上传 jar
