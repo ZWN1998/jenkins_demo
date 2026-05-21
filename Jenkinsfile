@@ -43,14 +43,19 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'linux-host',
-                    url: 'https://github.com/ZWN1998/jenkins_demo.git'
+                sh '''
+                    rm -rf repo && mkdir repo && cd repo
+                    curl -fsSL https://github.com/ZWN1998/jenkins_demo/archive/refs/heads/linux-host.tar.gz -o code.tar.gz
+                    tar xzf code.tar.gz --strip-components=1
+                    rm -f code.tar.gz
+                    echo "代码拉取完成: $(ls -la | wc -l) 个文件"
+                '''
             }
         }
 
         stage('Build & Package') {
             steps {
-                sh '/var/jenkins_home/tools/apache-maven-3.8.8/bin/mvn clean package -DskipTests'
+                sh 'cd repo && /var/jenkins_home/tools/apache-maven-3.8.8/bin/mvn clean package -DskipTests'
             }
         }
 
@@ -93,7 +98,7 @@ pipeline {
                         sleep 2
 
                         # 3. 上传 jar
-                        scp -i \$SSH_KEY -o StrictHostKeyChecking=no target/*.jar ${params.SSH_USER}@${params.TARGET_HOST}:${params.DEPLOY_DIR}/${APP_NAME}.jar
+                        scp -i \$SSH_KEY -o StrictHostKeyChecking=no repo/target/*.jar ${params.SSH_USER}@${params.TARGET_HOST}:${params.DEPLOY_DIR}/${APP_NAME}.jar
 
                         # 4. 启动应用
                         ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "cd ${params.DEPLOY_DIR} && nohup java -jar ${APP_NAME}.jar --server.port=${params.APP_PORT} > ${APP_NAME}.log 2>&1 &"
