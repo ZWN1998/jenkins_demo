@@ -86,10 +86,10 @@ pipeline {
                         echo "===== 部署到 ${params.TARGET_HOST} ====="
 
                         # 1. 创建远程目录
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "mkdir -p ${params.DEPLOY_DIR}"
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} mkdir -p ${params.DEPLOY_DIR}
 
                         # 2. 停止旧进程
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "ps aux | grep '${APP_NAME}' | grep -v grep | awk '{print \\\$2}' | xargs -r kill || true"
+                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "pkill -f ${APP_NAME}.jar || true"
                         sleep 2
 
                         # 3. 上传 jar
