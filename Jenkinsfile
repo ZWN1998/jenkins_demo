@@ -67,23 +67,64 @@ pipeline {
         stage('Check Remote Environment') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CRED_ID, keyFileVariable: 'SSH_KEY')]) {
-                    sh """
+                    sh '''#!/bin/bash
+                        set +e
                         echo "===== 远程服务器环境检查 ====="
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} '
-                            echo "主机名: \$(hostname)"
-                            echo "Java:"
-                            if type java >/dev/null 2>&1; then
-                                java -version 2>&1
-                            else
-                                echo "Java 未安装，正在安装..."
-                                apt-get update -qq && apt-get install -y -qq openjdk-17-jdk || yum install -y java-17-openjdk-devel
-                                java -version 2>&1
-                            fi
-                            echo "磁盘空间:"
-                            df -h / | tail -1
-                        '
+
+                        REMOTE_SCRIPT=$(cat <<'REMOTE_EOF'
+echo "主机名: $(hostname)"
+
+NEED_INSTALL=0
+if ! type java >/dev/null 2>&1; then
+    NEED_INSTALL=1
+else
+    JAVA_VER=$(java -version 2>&1 | head -1)
+    echo "当前 Java: $JAVA_VER"
+    if echo "$JAVA_VER" | grep -q '"1\\.'; then
+        NEED_INSTALL=1
+    else
+        MAJOR=$(echo "$JAVA_VER" | grep -oP '"\\K[0-9]+' | head -1)
+        if [ "$MAJOR" -lt 17 ] 2>/dev/null; then
+            NEED_INSTALL=1
+        fi
+    fi
+fi
+
+if [ "$NEED_INSTALL" -eq 1 ]; then
+    echo "Java 版本过低或未安装，正在安装 OpenJDK 17..."
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq openjdk-17-jdk
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y java-17-openjdk-devel
+    fi
+fi
+
+# 设置 Java 17 为默认版本
+JAVA17_BIN=$(find /usr/lib/jvm -name java -path "*/java-17*" -type f 2>/dev/null | head -1)
+if [ -n "$JAVA17_BIN" ]; then
+    echo "找到 Java 17: $JAVA17_BIN"
+    JAVA17_HOME=$(dirname $(dirname "$JAVA17_BIN"))
+    # 通过 alternatives 设置为默认（如果支持）
+    if command -v update-alternatives >/dev/null 2>&1; then
+        update-alternatives --install /usr/bin/java java "$JAVA17_BIN" 1700 2>/dev/null || true
+        update-alternatives --set java "$JAVA17_BIN" 2>/dev/null || true
+    fi
+    # 直接创建符号链接作为兜底
+    ln -sf "$JAVA17_BIN" /usr/local/bin/java
+fi
+
+echo "Java:"
+java -version 2>&1
+echo "磁盘空间:"
+df -h / | tail -1
+REMOTE_EOF
+                        )
+
+                        ENCODED=$(echo "$REMOTE_SCRIPT" | base64 -w0)
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 ''' + "${params.SSH_USER}@${params.TARGET_HOST}" + ''' "echo $ENCODED | base64 -d | bash"
+
                         echo "===== 远程环境检查完成 ====="
-                    """
+                    '''
                 }
             }
         }
@@ -92,20 +133,25 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CRED_ID, keyFileVariable: 'SSH_KEY')]) {
                     sh """
+                        set +e
                         echo "===== 部署到 ${params.TARGET_HOST} ====="
+                        SSH_OPTS="-i \$SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
 
                         # 1. 创建远程目录
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} mkdir -p ${params.DEPLOY_DIR}
+                        ssh \$SSH_OPTS ${params.SSH_USER}@${params.TARGET_HOST} "mkdir -p ${params.DEPLOY_DIR}"
+                        if [ \$? -ne 0 ]; then echo "创建目录失败"; exit 1; fi
 
-                        # 2. 停止旧进程
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "pkill -f ${APP_NAME}.jar" || true
+                        # 2. 停止旧进程（忽略不存在的情况）
+                        ssh \$SSH_OPTS ${params.SSH_USER}@${params.TARGET_HOST} "pkill -f ${APP_NAME}.jar || true"
                         sleep 2
 
                         # 3. 上传 jar
-                        scp -i \$SSH_KEY -o StrictHostKeyChecking=no repo/target/*.jar ${params.SSH_USER}@${params.TARGET_HOST}:${params.DEPLOY_DIR}/${APP_NAME}.jar
+                        scp \$SSH_OPTS repo/target/*.jar ${params.SSH_USER}@${params.TARGET_HOST}:${params.DEPLOY_DIR}/${APP_NAME}.jar
+                        if [ \$? -ne 0 ]; then echo "上传文件失败"; exit 1; fi
 
                         # 4. 启动应用
-                        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ${params.SSH_USER}@${params.TARGET_HOST} "cd ${params.DEPLOY_DIR} && nohup java -jar ${APP_NAME}.jar --server.port=${params.APP_PORT} > ${APP_NAME}.log 2>&1 &"
+                        ssh \$SSH_OPTS ${params.SSH_USER}@${params.TARGET_HOST} "cd ${params.DEPLOY_DIR} && nohup java -jar ${APP_NAME}.jar --server.port=${params.APP_PORT} > ${APP_NAME}.log 2>&1 &"
+                        if [ \$? -ne 0 ]; then echo "启动应用失败"; exit 1; fi
 
                         sleep 3
                         echo "===== 部署完成，访问 http://${params.TARGET_HOST}:${params.APP_PORT} ====="
