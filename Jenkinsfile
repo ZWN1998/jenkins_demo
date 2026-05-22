@@ -53,7 +53,13 @@ pipeline {
                     done
                     tar xzf code.tar.gz --strip-components=1
                     rm -f code.tar.gz
-                    echo "代码拉取完成: $(ls -la | wc -l) 个文件"
+
+                    echo "===== 拉取代码详情 ====="
+                    echo "分支: linux-host"
+                    echo "文件列表:"
+                    find . -type f -not -path './.git/*' | sort
+                    echo "文件总数: $(find . -type f -not -path './.git/*' | wc -l)"
+                    echo "========================"
                 '''
             }
         }
